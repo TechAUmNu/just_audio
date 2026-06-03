@@ -193,14 +193,15 @@ class Html5AudioPlayer extends JustAudioPlayer {
         }.toJS);
   }
 
-  /// Returns true if the browser is Safari on iOS/iPadOS, where
-  /// HTMLAudioElement.volume is read-only.
+  /// Returns true if the browser is running on iOS/iPadOS.
+  /// All iOS browsers (Safari, Chrome, Firefox, etc.) use WebKit and have
+  /// a read-only HTMLAudioElement.volume, so we need the GainNode workaround
+  /// for all of them.
   bool get _isIOSSafari {
     final ua = window.navigator.userAgent.toLowerCase();
     // iPad on iOS 13+ may report as 'macintosh', so also check maxTouchPoints.
-    final isIOS = ua.contains('iphone') || ua.contains('ipad') ||
+    return ua.contains('iphone') || ua.contains('ipad') ||
         (ua.contains('macintosh') && window.navigator.maxTouchPoints > 0);
-    return isIOS && ua.contains('safari') && !ua.contains('chrome') && !ua.contains('crios');
   }
 
   /// Sets up a Web Audio API GainNode so that volume control works on iOS
