@@ -162,6 +162,15 @@ class Html5AudioPlayer extends JustAudioPlayer {
     _audioElement.addEventListener(
         'timeupdate',
         (Event event) {
+          // WebKit (iOS in particular) fires spurious 'stalled'/'waiting'
+          // events during healthy playback and rarely re-fires
+          // 'canplaythrough', leaving the state stuck on buffering — which
+          // freezes position extrapolation. If time is advancing while not
+          // paused, we are demonstrably playing: heal back to ready.
+          if (_processingState == ProcessingStateMessage.buffering &&
+              !_audioElement.paused) {
+            transition(ProcessingStateMessage.ready);
+          }
           _currentAudioSourcePlayer
               ?.timeUpdated(_audioElement.currentTime.toDouble());
         }.toJS);
@@ -184,6 +193,19 @@ class Html5AudioPlayer extends JustAudioPlayer {
         'canplaythrough',
         (Event event) {
           _audioElement.playbackRate = _speed;
+          transition(ProcessingStateMessage.ready);
+        }.toJS);
+    // 'canplaythrough' alone is not reliable for leaving the buffering
+    // state: iOS often fires it only once per source. 'canplay' and
+    // 'playing' also signal readiness.
+    _audioElement.addEventListener(
+        'canplay',
+        (Event event) {
+          transition(ProcessingStateMessage.ready);
+        }.toJS);
+    _audioElement.addEventListener(
+        'playing',
+        (Event event) {
           transition(ProcessingStateMessage.ready);
         }.toJS);
     _audioElement.addEventListener(
