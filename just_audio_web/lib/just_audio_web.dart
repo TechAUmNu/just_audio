@@ -121,19 +121,14 @@ class Html5AudioPlayer extends JustAudioPlayer {
   bool _shuffleModeEnabled = false;
   final Map<String, AudioSourcePlayer> _audioSourcePlayers = {};
 
-  // Web Audio API nodes for volume control (works on iOS Safari).
-  AudioContext? _audioContext;
-  MediaElementAudioSourceNode? _sourceNode;
-  GainNode? _gainNode;
+  // NOTE: an earlier revision routed iOS Safari audio through a Web Audio
+  // GainNode so the volume slider worked (HTMLAudioElement.volume is
+  // read-only there). Removed: iOS suspends AudioContext output when the
+  // screen locks, which silenced playback — a plain <audio> element keeps
+  // playing with the screen off. iOS volume is hardware-buttons only.
 
   /// Creates an [Html5AudioPlayer] with the given [id].
   Html5AudioPlayer({required String id}) : super(id: id) {
-    // Only use Web Audio API GainNode on iOS Safari where
-    // HTMLAudioElement.volume is read-only.
-    if (_isIOSSafari) {
-      _audioElement.crossOrigin = 'anonymous';
-      _initWebAudioGain();
-    }
     _audioElement.addEventListener(
         'durationchange',
         (Event event) {
@@ -213,33 +208,6 @@ class Html5AudioPlayer extends JustAudioPlayer {
         (Event event) {
           broadcastPlaybackEvent();
         }.toJS);
-  }
-
-  /// Returns true if the browser is Safari on iOS/iPadOS, where
-  /// HTMLAudioElement.volume is read-only.
-  bool get _isIOSSafari {
-    final ua = window.navigator.userAgent.toLowerCase();
-    // iPad on iOS 13+ may report as 'macintosh', so also check maxTouchPoints.
-    final isIOS = ua.contains('iphone') || ua.contains('ipad') ||
-        (ua.contains('macintosh') && window.navigator.maxTouchPoints > 0);
-    return isIOS && ua.contains('safari') && !ua.contains('chrome') && !ua.contains('crios');
-  }
-
-  /// Sets up a Web Audio API GainNode so that volume control works on iOS
-  /// Safari, where HTMLAudioElement.volume is read-only.
-  void _initWebAudioGain() {
-    try {
-      _audioContext = AudioContext();
-      _sourceNode = _audioContext!.createMediaElementSource(_audioElement);
-      _gainNode = _audioContext!.createGain();
-      _sourceNode!.connect(_gainNode!);
-      _gainNode!.connect(_audioContext!.destination);
-    } catch (e) {
-      // If Web Audio API is unavailable, fall back to element volume.
-      _audioContext = null;
-      _sourceNode = null;
-      _gainNode = null;
-    }
   }
 
   /// The current playback order, depending on whether shuffle mode is enabled.
@@ -367,10 +335,6 @@ class Html5AudioPlayer extends JustAudioPlayer {
   Future<PlayResponse> play(PlayRequest request) async {
     if (_playing) return PlayResponse();
     _playing = true;
-    // Resume AudioContext if suspended (Safari requires user gesture).
-    if (_audioContext != null && _audioContext!.state == 'suspended') {
-      await _audioContext!.resume().toDart;
-    }
     await _play();
     return PlayResponse();
   }
@@ -389,11 +353,8 @@ class Html5AudioPlayer extends JustAudioPlayer {
 
   @override
   Future<SetVolumeResponse> setVolume(SetVolumeRequest request) async {
-    if (_gainNode != null) {
-      _gainNode!.gain.value = request.volume;
-    } else {
-      _audioElement.volume = request.volume;
-    }
+    // No-op on iOS Safari (read-only property) — by design; see note above.
+    _audioElement.volume = request.volume;
     return SetVolumeResponse();
   }
 
